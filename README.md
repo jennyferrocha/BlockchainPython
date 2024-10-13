@@ -24,7 +24,7 @@ Siga os passos abaixo para clonar o repositório e executar o projeto em sua má
   - Deve-se clonar o repositório remoto para a sua máquina atual. Realize através do comando:
 
     ```bash
-    git clone https://github.com/jennyferrocha/BlockchainPython
+    git clone https://github.com/jennyferrocha/BlockchainPython.git
     ```
 
 ### **2. Navegar para o diretório do projeto**
