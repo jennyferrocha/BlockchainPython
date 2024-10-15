@@ -32,7 +32,7 @@ Siga os passos abaixo para clonar o repositório e executar o projeto em sua má
   - Entre no diretório do projeto clonado:
   
     ``` bash
-    cd nome-do-repositorio
+    cd BlockchainPython
     ```
 
 ### **3. Executar o código**
