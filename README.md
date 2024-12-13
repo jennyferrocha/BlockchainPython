@@ -67,7 +67,7 @@ O código em `Blockchain.py` contém um exemplo de uso que demonstra como criar 
 
 ## **Relatório**
 
-Um relatório mais detalhado sobre a implementação e as funcionalidades está disponível no arquivo `Relatorio.md`.
+Um relatório mais detalhado sobre a implementação e as funcionalidades está disponível no arquivo `Relatório.md`
 
 ## **Licença**
 
