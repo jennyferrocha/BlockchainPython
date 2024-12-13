@@ -2,7 +2,6 @@ import datetime
 import hashlib
 import json
 
-# Classe para representar um bloco
 class Bloco:
     def __init__(self, indice, timestamp, transacoes, prova, nonce, dificuldade, hash_anterior):
         self.indice = indice
@@ -13,16 +12,17 @@ class Bloco:
         self.dificuldade = dificuldade
         self.hash_anterior = hash_anterior
         self.hash_atual = None
-        self.proximo_bloco = None  # Referência ao próximo bloco
+        self.proximo_bloco = None
 
-# Classe para a Blockchain
 class Blockchain:
-    def __init__(self, dificuldade=5):  # Adiciona dificuldade como parâmetro opcional
+    def __init__(self, dificuldade=5):
         self.bloco_genesis = self.criar_bloco_genesis()
-        self.ultimo_bloco = self.bloco_genesis  # Mantém a referência ao último bloco
-        self.transacoes_pendentes = []  # Lista para transações pendentes
-        self.historico_transacoes = {}  # Histórico de transações por endereço
-        self.dificuldade = dificuldade  # Dificuldade inicial da prova de trabalho
+        self.ultimo_bloco = self.bloco_genesis
+        self.transacoes_pendentes = []
+        self.historico_transacoes = {}
+        self.dificuldade = dificuldade
+        self.saldos = {}  
+        self.recompensa_minerador = 50  
 
     def criar_bloco_genesis(self):
         bloco_genesis = Bloco(
@@ -35,12 +35,16 @@ class Blockchain:
             hash_anterior='0'
         )
         bloco_genesis.hash_atual = self.gerar_hash(bloco_genesis)
-        print(f"Bloco gênesis criado: {bloco_genesis.indice}.\n")
+        print(f"Bloco gênesis criado: {bloco_genesis.indice}.")
         return bloco_genesis
 
-    def criar_bloco(self, prova, nonce):
-        # Calcula o nonce e o hash usando o sistema de Proof of Work
-        nonce, hash_atual = self.prova_de_trabalho(prova)
+    def criar_bloco(self, prova, nonce, minerador):
+        taxas_totais = sum(txn.get('Taxa', 0) for txn in self.transacoes_pendentes)
+        self.transacoes_pendentes.append({
+            'Remetente': 'Recompensa',
+            'Destinatario': minerador,
+            'Valor': self.recompensa_minerador + taxas_totais
+        })
 
         novo_bloco = Bloco(
             indice=self.ultimo_bloco.indice + 1,
@@ -51,23 +55,25 @@ class Blockchain:
             dificuldade=self.dificuldade,
             hash_anterior=self.ultimo_bloco.hash_atual
         )
-        novo_bloco.hash_atual = hash_atual
-        self.transacoes_pendentes = []  # Limpa as transações pendentes
+        novo_bloco.hash_atual = self.gerar_hash(novo_bloco)
+        self.transacoes_pendentes = []
         self.ultimo_bloco.proximo_bloco = novo_bloco
-        self.ultimo_bloco = novo_bloco  # Atualiza a referência para o último bloco
+        self.ultimo_bloco = novo_bloco
 
-        print(f"Bloco {novo_bloco.indice} criado e adicionado à blockchain com hash {novo_bloco.hash_atual}.\n")
+        self.atualizar_saldos(novo_bloco)
+        print(f"Bloco {novo_bloco.indice} criado e adicionado à blockchain com hash {novo_bloco.hash_atual}.")
         return novo_bloco
 
-    def criar_transacao(self, remetente, destinatario, valor):
-        if not self.is_endereco_valido(remetente) or not self.is_endereco_valido(destinatario):
-            print("Erro: Endereço inválido.\n")
+    def criar_transacao(self, remetente, destinatario, valor, taxa=0):
+        if remetente != 'Recompensa' and self.saldos.get(remetente, 0) < valor + taxa:
+            print("Erro: Saldo insuficiente.")
             return False
 
         transacao = {
             'Remetente': remetente,
             'Destinatario': destinatario,
-            'Valor': valor
+            'Valor': valor,
+            'Taxa': taxa
         }
         self.transacoes_pendentes.append(transacao)
 
@@ -79,24 +85,22 @@ class Blockchain:
             self.historico_transacoes[destinatario] = []
         self.historico_transacoes[destinatario].append(transacao)
 
-        print(f"Transação criada: {remetente} envia {valor} para {destinatario}.\n")
+        print(f"Transação criada: {remetente} envia {valor} para {destinatario} com taxa {taxa}.")
         return self.ultimo_bloco.indice + 1
 
     def prova_de_trabalho(self, prova_anterior):
         nonce = 0
         prefixo_zeros = '0' * self.dificuldade
-        print("Iniciando o Proof-of-Work...\n")
+        print("Iniciando o Proof-of-Work...")
 
         while True:
-            # Combina a prova, nonce e prova anterior para o cálculo do hash
             bloco_dados = f"{prova_anterior**2}{nonce}{self.dificuldade}"
             operacao_hash = hashlib.sha256(bloco_dados.encode()).hexdigest()
 
-            # Verifica se o hash atende à dificuldade
             if operacao_hash.startswith(prefixo_zeros):
-                print(f"Proof-of-Work concluído com sucesso: nonce={nonce}, hash={operacao_hash}\n")
+                print(f"Proof-of-Work concluído: nonce={nonce}, hash={operacao_hash}")
                 return nonce, operacao_hash
-            nonce += 1  # Incrementa o nonce até encontrar um hash válido
+            nonce += 1
 
     def gerar_hash(self, bloco):
         bloco_dados = {
@@ -111,30 +115,41 @@ class Blockchain:
         bloco_codificado = json.dumps(bloco_dados, sort_keys=True).encode()
         return hashlib.sha256(bloco_codificado).hexdigest()
 
+    def atualizar_saldos(self, bloco):
+        for transacao in bloco.transacoes:
+            remetente = transacao['Remetente']
+            destinatario = transacao['Destinatario']
+            valor = transacao['Valor']
+
+            if remetente != 'Recompensa':
+                self.saldos[remetente] = self.saldos.get(remetente, 0) - (valor + transacao.get('Taxa', 0))
+
+            self.saldos[destinatario] = self.saldos.get(destinatario, 0) + valor
+
     def validar_cadeia(self):
         bloco_atual = self.bloco_genesis
-        print("Iniciando a validação da blockchain...\n")
+        print("Iniciando a validação da blockchain...")
 
         while bloco_atual is not None:
             if bloco_atual.proximo_bloco:
                 if bloco_atual.proximo_bloco.hash_anterior != bloco_atual.hash_atual:
-                    print(f"Erro: O bloco {bloco_atual.indice} tem um hash anterior inválido!\n")
+                    print(f"Erro: Bloco {bloco_atual.indice} tem hash anterior inválido!")
                     return False
 
                 prova_anterior = bloco_atual.prova
                 operacao_hash = hashlib.sha256(f"{prova_anterior**2}".encode()).hexdigest()
                 if not operacao_hash.startswith('0' * bloco_atual.proximo_bloco.dificuldade):
-                    print(f"Erro: O bloco {bloco_atual.indice} tem uma prova de trabalho inválida!\n")
+                    print(f"Erro: Bloco {bloco_atual.indice} tem prova de trabalho inválida!")
                     return False
 
             bloco_atual = bloco_atual.proximo_bloco
 
-        print("A blockchain é válida.\n")
+        print("Blockchain válida.")
         return True
 
     def exibir_cadeia(self):
         bloco_atual = self.bloco_genesis
-        print("Blockchain atual:\n")
+        print("Blockchain atual:")
 
         while bloco_atual is not None:
             print(json.dumps({
@@ -148,32 +163,46 @@ class Blockchain:
                 'hash_atual': bloco_atual.hash_atual
             }, indent=4))
             bloco_atual = bloco_atual.proximo_bloco
-        print("\n")
+        print()
 
-    def exibir_historico_endereco(self, endereco):
-        # Exibe o histórico de transações de um endereço
-        if endereco in self.historico_transacoes:
-            print(f"Histórico de transações para {endereco}:\n")
-            for transacao in self.historico_transacoes[endereco]:
-                print(json.dumps(transacao, indent=4))
-            print("\n")
-        else:
-            print(f"Nenhuma transação encontrada para o endereço {endereco}.\n")
+    def resolver_fork(self, cadeias):
+        print("Resolvendo forks...")
+        cadeia_mais_longa = max(cadeias, key=len)
+        self.bloco_genesis = cadeia_mais_longa[0]
+        self.ultimo_bloco = cadeia_mais_longa[-1]
+        print("Fork resolvido: Adotada a cadeia mais longa.")
+        self.recalcular_saldos()
 
-    def is_endereco_valido(self, endereco):
-        return True
+    def recalcular_saldos(self):
+        print("Recalculando saldos após resolver o fork...")
+        self.saldos = {}
+        bloco_atual = self.bloco_genesis
 
-# Exemplo de uso:
-blockchain = Blockchain(dificuldade=4)  # Ajusta a dificuldade desejada
+        while bloco_atual:
+            self.atualizar_saldos(bloco_atual)
+            bloco_atual = bloco_atual.proximo_bloco
 
-# Criação de transações
-blockchain.criar_transacao("Jennyfer", "Gustavo", "R$300,00")
-blockchain.criar_transacao("Gustavo", "Maria", "R$60,00")
+    def propagar_transacao(self, transacao, nos):
+        for no in nos:
+            no.transacoes_pendentes.append(transacao)
+        print("Transação propagada para todos os nós.")
 
-# Mineração de um novo bloco
+    def propagar_bloco(self, bloco, nos):
+        for no in nos:
+            no.ultimo_bloco.proximo_bloco = bloco
+            no.ultimo_bloco = bloco
+        print("Bloco propagado para todos os nós.")
+
+blockchain = Blockchain(dificuldade=4)
+blockchain.saldos["Jennyfer"] = 500
+blockchain.saldos["Gustavo"] = 200
+
+blockchain.criar_transacao("Jennyfer", "Gustavo", 100, taxa=2)
+blockchain.criar_transacao("Gustavo", "Maria", 50, taxa=1)
+
 prova_anterior = blockchain.ultimo_bloco.prova
 nonce, hash_atual = blockchain.prova_de_trabalho(prova_anterior)
-blockchain.criar_bloco(prova_anterior, nonce)
+blockchain.criar_bloco(prova_anterior, nonce, minerador="Minerador1")
 
-# Exibição do histórico de transações para um endereço específico
-blockchain.exibir_historico_endereco("Jennyfer")
+blockchain.exibir_cadeia()
+print("Saldos:", blockchain.saldos)
